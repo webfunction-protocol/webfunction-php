@@ -1,0 +1,76 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../autoload.php'] as $candidate) {
+    if (file_exists($candidate)) {
+        require $candidate;
+
+        break;
+    }
+}
+
+use WebFunction\Error;
+use WebFunction\Request;
+
+function wfnUsage()
+{
+    fwrite(STDERR, <<<USAGE
+    Usage: wfn call [--auth TOKEN] [--version VERSION] <url> <json-args>
+
+    Example:
+      wfn call https://api.example.com/find-user '{"id":"123"}'
+      wfn call --auth my-token --version 2024-01-01 https://api.example.com/list-orders '{}'
+
+    USAGE);
+}
+
+$args = array_slice($argv, 1);
+$command = array_shift($args);
+
+if ($command !== 'call') {
+    wfnUsage();
+    exit(1);
+}
+
+$auth = null;
+$version = null;
+$positional = [];
+
+while (!empty($args)) {
+    $arg = array_shift($args);
+
+    if ($arg === '--auth') {
+        $auth = array_shift($args);
+    } elseif ($arg === '--version') {
+        $version = array_shift($args);
+    } else {
+        $positional[] = $arg;
+    }
+}
+
+$url = isset($positional[0]) ? $positional[0] : null;
+$jsonArgs = isset($positional[1]) ? $positional[1] : '{}';
+
+if ($url === null) {
+    wfnUsage();
+    exit(1);
+}
+
+try {
+    $decodedArgs = json_decode($jsonArgs, true, 512, JSON_THROW_ON_ERROR);
+} catch (\JsonException $e) {
+    fwrite(STDERR, "Invalid JSON arguments: {$e->getMessage()}\n");
+    exit(1);
+}
+
+try {
+    $result = Request::execute($url, $auth, $version, is_array($decodedArgs) ? $decodedArgs : []);
+    echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+} catch (Error $e) {
+    fwrite(STDERR, "Error: {$e->getErrorCode()}\n");
+    fwrite(STDERR, "Message: {$e->getMessage()}\n");
+    fwrite(STDERR, 'Details: ' . json_encode($e->getDetails()) . "\n");
+    exit(1);
+}

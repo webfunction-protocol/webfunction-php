@@ -1,0 +1,32 @@
+{
+    "name": "webfunction-protocol/webfunction",
+    "description": "A Web Function client for PHP (https://webfunction.org)",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["webfunction", "web-function", "api", "client"],
+    "homepage": "https://webfunction.org",
+    "require": {
+        "php": ">=7.3",
+        "ext-json": "*",
+        "ext-curl": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.0"
+    },
+    "autoload": {
+        "files": ["src/polyfills.php"],
+        "psr-4": {
+            "WebFunction\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "WebFunction\\Tests\\": "tests/"
+        }
+    },
+    "bin": ["bin/wfn"],
+    "scripts": {
+        "test": "phpunit"
+    },
+    "minimum-stability": "stable"
+}
