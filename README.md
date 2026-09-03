@@ -1,7 +1,7 @@
 # webfunction-php
 
 A [Web Function](https://webfunction.org) client for PHP, ported from the
-[official Ruby gem](https://github.com/robinclart/web_function).
+[official Ruby gem](https://github.com/webfunction-protocol/webfunction-ruby).
 
 Web Function is a way to design APIs. There are no verbs and no nested URLs.
 You call an endpoint with a POST request, the path names the action, and the
