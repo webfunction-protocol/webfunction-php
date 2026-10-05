@@ -84,6 +84,29 @@ check('attribute lookup', $nameAttr !== null && (string) $nameAttr->getType() ==
 check('list-items returns array<object>', (string) $package->endpoint('list-items')->getReturns() === 'array<object>');
 check('list-people is paginated', $package->endpoint('list-people')->isPaginated());
 
+$privatePackage = Package::fromArray([
+    'base_url' => 'https://api.example.com/',
+    'endpoints' => [
+        ['name' => 'internal-sync', 'returns' => 'boolean', 'flags' => ['private']],
+        [
+            'name' => 'find-account',
+            'returns' => 'object',
+            'arguments' => [
+                ['name' => 'id', 'type' => 'string', 'flags' => ['required']],
+                ['name' => 'debug', 'type' => 'boolean', 'flags' => ['private']],
+            ],
+            'attributes' => [
+                ['name' => 'email', 'type' => 'string'],
+                ['name' => 'audit_ref', 'type' => 'string', 'flags' => ['private']],
+            ],
+        ],
+    ],
+]);
+$accountEndpoint = $privatePackage->endpoint('find-account');
+check('endpoint private flag', $privatePackage->endpoint('internal-sync')->isPrivate() && !$accountEndpoint->isPrivate());
+check('argument private flag', $accountEndpoint->getArgument('debug')->isPrivate() && !$accountEndpoint->getArgument('id')->isPrivate());
+check('attribute private flag', $accountEndpoint->getAttribute('audit_ref')->isPrivate() && !$accountEndpoint->getAttribute('email')->isPrivate());
+
 // ---- Client calls via a stubbed HTTP client --------------------------------
 
 Request::setHttpClient(function (string $url, array $headers, ?string $body) {

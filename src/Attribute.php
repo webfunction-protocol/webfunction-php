@@ -103,4 +103,9 @@ final class Attribute
     {
         return $this->hasFlag('nullable');
     }
+
+    public function isPrivate(): bool
+    {
+        return $this->hasFlag('private');
+    }
 }

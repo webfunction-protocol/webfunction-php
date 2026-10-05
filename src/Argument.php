@@ -119,4 +119,9 @@ final class Argument
     {
         return !$this->isRequired();
     }
+
+    public function isPrivate(): bool
+    {
+        return $this->hasFlag('private');
+    }
 }
