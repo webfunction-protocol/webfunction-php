@@ -18,10 +18,26 @@ final class Base implements TypeInterface
     /** @var string|null */
     private $refinement;
 
-    public function __construct(string $baseType, ?string $refinement = null)
+    /** @var TypeInterface|null */
+    private $arg;
+
+    /**
+     * @param TypeInterface|null $arg The type argument when this is a generic object applied to a type:
+     *                                `{"object.list": "object.user"}` is `object.list` with the argument `object.user`.
+     */
+    public function __construct(string $baseType, ?string $refinement = null, ?TypeInterface $arg = null)
     {
         $this->baseType = $baseType;
         $this->refinement = $refinement;
+        $this->arg = $arg;
+    }
+
+    /**
+     * The type argument of a generic application, or null for any other type.
+     */
+    public function getArg(): ?TypeInterface
+    {
+        return $this->arg;
     }
 
     public function getBaseType(): string
@@ -42,9 +58,11 @@ final class Base implements TypeInterface
             case 'base':
                 return $this->baseType;
             case 'default':
-                return $this->refinement !== null
+                $text = $this->refinement !== null
                     ? "{$this->baseType}.{$this->refinement}"
                     : $this->baseType;
+
+                return $this->arg !== null ? $text . '<' . $this->arg->format($format) . '>' : $text;
             default:
                 throw new \InvalidArgumentException("unknown format: {$format}");
         }
@@ -59,16 +77,27 @@ final class Base implements TypeInterface
     {
         return $other instanceof self
             && $other->baseType === $this->baseType
-            && $other->refinement === $this->refinement;
+            && $other->refinement === $this->refinement
+            && ($this->arg === null ? $other->arg === null : ($other->arg !== null && $this->arg->equals($other->arg)));
     }
 
     public function objects(): array
     {
+        $objects = [];
+
         if ($this->baseType === 'object' && $this->refinement !== null) {
-            return [$this->refinement];
+            $objects[] = $this->refinement;
         }
 
-        return [];
+        if ($this->arg !== null) {
+            foreach ($this->arg->objects() as $object) {
+                if (!in_array($object, $objects, true)) {
+                    $objects[] = $object;
+                }
+            }
+        }
+
+        return $objects;
     }
 
     public function withoutRefinements(): TypeInterface

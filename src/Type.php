@@ -30,19 +30,34 @@ final class Type
         'string' => ['date', 'time', 'datetime', 'uuid', 'base64', 'email', 'phone', 'url', 'uri', 'ipv4', 'ipv6', 'hostname'],
     ];
 
+    /** Reason recorded by {@see Any::getMalformed()}: a generic application object did not have exactly one key. */
+    const MALFORMED_KEY_COUNT = 'key-count';
+
+    /** Reason recorded by {@see Any::getMalformed()}: the application's key was not `object.<name>`. */
+    const MALFORMED_KEY_PREFIX = 'key-prefix';
+
+    /** Reason recorded by {@see Any::getMalformed()}: the application's value was not a valid type. */
+    const MALFORMED_ARGUMENT = 'argument';
+
     private function __construct()
     {
     }
 
     /**
-     * Parses a raw type declaration (a string, an array of strings/arrays, or `null`) into a
-     * {@see TypeInterface}. A top-level array is read as a union; a nested array denotes an array of the
-     * inner type. An empty or unrecognized declaration resolves to {@see Any}.
+     * Parses a raw type declaration (a string, an array of strings/arrays, a generic application, or `null`)
+     * into a {@see TypeInterface}. A top-level array is read as a union; a nested array denotes an array of
+     * the inner type. A generic application, `{"object.list": "object.user"}` (an associative array once
+     * decoded), is a generic object applied to a type. An empty or unrecognized declaration resolves to
+     * {@see Any}, as does the bare type parameter `T` and any malformed application.
      *
      * @param mixed $raw
      */
     public static function parse($raw): TypeInterface
     {
+        if (self::isApplication($raw)) {
+            return self::application($raw);
+        }
+
         $items = is_array($raw) ? $raw : ($raw === null ? [] : [$raw]);
 
         $types = array_values(array_filter(
@@ -71,6 +86,10 @@ final class Type
             return self::base($raw);
         }
 
+        if (self::isApplication($raw)) {
+            return self::application($raw);
+        }
+
         if (is_array($raw)) {
             $types = array_values(array_filter(
                 array_map(function ($type) {
@@ -96,6 +115,10 @@ final class Type
      */
     public static function base(string $type): ?TypeInterface
     {
+        if ($type === 'T') {
+            return new Any(true);
+        }
+
         $parts = array_pad(explode('.', $type, 2), 2, null);
         $baseType = $parts[0];
         $refinement = $parts[1];
@@ -118,6 +141,45 @@ final class Type
             default:
                 return null;
         }
+    }
+
+    /**
+     * A generic application is a non-empty associative array (a JSON object once decoded). An empty JSON
+     * object decodes to the same empty array as `[]`, so it can't be told apart and resolves to any.
+     *
+     * @param mixed $raw
+     */
+    private static function isApplication($raw): bool
+    {
+        return is_array($raw) && $raw !== [] && !array_is_list($raw);
+    }
+
+    /**
+     * Parses a generic application, `{"object.<name>": <type>}`. Anything that is not exactly that shape
+     * resolves to {@see Any} carrying the reason, rather than failing, so a package using generics (even
+     * incorrectly) still loads.
+     *
+     * @param array<mixed> $raw
+     */
+    private static function application(array $raw): TypeInterface
+    {
+        if (count($raw) !== 1) {
+            return new Any(false, self::MALFORMED_KEY_COUNT);
+        }
+
+        $key = array_key_first($raw);
+
+        if (!is_string($key) || strncmp($key, 'object.', 7) !== 0 || $key === 'object.') {
+            return new Any(false, self::MALFORMED_KEY_PREFIX);
+        }
+
+        $value = $raw[$key];
+
+        if (is_int($value) || is_float($value) || is_bool($value)) {
+            return new Any(false, self::MALFORMED_ARGUMENT);
+        }
+
+        return new Base('object', substr($key, 7), self::parse($value));
     }
 
     private static function allowedRefinement(string $baseType, ?string $refinement): ?string

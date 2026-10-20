@@ -385,6 +385,22 @@ lists the names it references:
 Type::parse("object.user")->objects(); // => ["user"]
 ```
 
+A generic object (an object definition using the type parameter `T`) is applied
+to a type with `{"object.list": "object.user"}`, which reads as
+`object.list<object.user>`. The library doesn't resolve generics itself, and
+never fails on them: `getArg()` returns the argument, `objects()` includes the
+names inside it, an unresolved `T` reads as `any` (`isParam()` is true, for
+tooling that wants to tell it from a literal `any`), and a malformed application
+becomes `any` with the reason in `getMalformed()`:
+
+```php
+(string) Type::parse(["object.list" => "object.user"]); // => "object.list<object.user>"
+(string) Type::parse([["T"]]);                          // => "array<any>"
+```
+
+(An empty JSON object decodes to the same empty array as `[]`, so it can't be
+told apart from an empty declaration; it resolves to `any` either way.)
+
 ## Object schemas
 
 A package can declare named object definitions under its `objects` key. Any
@@ -621,6 +637,7 @@ Run the smoke test (no PHPUnit required):
 
 ```bash
 php tests/smoke.php
+php tests/generics.php
 ```
 
 If you have Composer and PHPUnit available, `composer test` runs the same

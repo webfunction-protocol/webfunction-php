@@ -6,7 +6,7 @@ namespace WebFunction;
 
 final class Version
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.3.0';
 
     private function __construct()
     {
