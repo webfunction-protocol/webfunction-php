@@ -387,15 +387,19 @@ Type::parse("object.user")->objects(); // => ["user"]
 
 A generic object (an object definition using the type parameter `T`) is applied
 to a type with `{"object.list": "object.user"}`, which reads as
-`object.list<object.user>`. The library doesn't resolve generics itself, and
-never fails on them: `getArg()` returns the argument, `objects()` includes the
-names inside it, an unresolved `T` reads as `any` (`isParam()` is true, for
-tooling that wants to tell it from a literal `any`), and a malformed application
-becomes `any` with the reason in `getMalformed()`:
+`object.list<object.user>`. An array of a type can be written
+`{"array": "object.user"}`, which reads as `array<object.user>` and is the same
+as `[["object.user"]]`; a union of one entry is that entry. The library doesn't
+resolve generics itself, and never fails on them: `getArg()` returns the
+argument, `objects()` includes the names inside it, an unresolved `T` reads as
+`any` (`isParam()` is true, for tooling that wants to tell it from a literal
+`any`), and a malformed application becomes `any` with the reason in
+`getMalformed()`:
 
 ```php
 (string) Type::parse(["object.list" => "object.user"]); // => "object.list<object.user>"
 (string) Type::parse([["T"]]);                          // => "array<any>"
+(string) Type::parse(["array" => "object.user"]);       // => "array<object.user>"
 ```
 
 (An empty JSON object decodes to the same empty array as `[]`, so it can't be

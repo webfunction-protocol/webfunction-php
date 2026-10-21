@@ -141,4 +141,110 @@ check('package: malformed return is any', (string) $package->endpoint('broken')-
 $list = $package->object('list', 'attributes');
 check('package: T attribute is any', $list !== null && (string) $list->getAttribute('items')->getType() === 'array<any>');
 
+// ---- Array applications ---------------------------------------------------------
+// {"array": X} is the canonical way to write an array of X; it must read like the legacy [[X]].
+
+$pairs = [
+    ['{ "array": "string" }', '[["string"]]'],
+    ['{ "array": "object.user" }', '[["object.user"]]'],
+    ['{ "array": ["string", "null"] }', '[["string", "null"]]'],
+    ['{ "array": "T" }', '[["T"]]'],
+    ['{ "array": { "array": "string" } }', '[[["string"]]]'],
+    ['{ "array": { "object.page": "object.user" } }', '[[{ "object.page": "object.user" }]]'],
+    ['{ "object.page": { "array": "object.user" } }', '{ "object.page": [["object.user"]] }'],
+    ['[{ "array": "string" }, "null"]', '[["string"], "null"]'],
+];
+
+foreach ($pairs as $pair) {
+    $a = parseJson($pair[0]);
+    $l = parseJson($pair[1]);
+    check(
+        "array application {$pair[0]} reads like {$pair[1]}",
+        $a->equals($l)
+            && $a->format() === $l->format()
+            && $a->format('base') === $l->format('base')
+            && $a->format('compact') === $l->format('compact')
+            && $a->objects() === $l->objects()
+    );
+}
+
+check('array application of string', fmt('{ "array": "string" }') === 'array<string>');
+check('array application of an object', fmt('{ "array": "object.user" }') === 'array<object.user>');
+check('array application of a union', fmt('{ "array": ["string", "number"] }') === 'array<string | number>');
+check('array application of an array application', fmt('{ "array": { "array": "string" } }') === 'array<array<string>>');
+check('array application of a generic application', fmt('{ "array": { "object.page": "object.user" } }') === 'array<object.page<object.user>>');
+check('generic application of an array application', fmt('{ "object.page": { "array": "object.user" } }') === 'object.page<array<object.user>>');
+check('array application of T', fmt('{ "array": "T" }') === 'array<any>');
+check('array application in a union', fmt('[{ "array": "string" }, "null"]') === 'array<string> | null');
+check('bare array beside an array application', fmt('["array", { "array": "string" }]') === 'array<any> | array<string>');
+
+$t = parseJson('{ "array": "object.user" }');
+check('array application is an ArrayOf', $t instanceof \WebFunction\Type\ArrayOf && $t->getBaseType() === 'array');
+check('array application element', $t->getOf()->format() === 'object.user');
+check('array application base format', $t->format('base') === 'array');
+$param = parseJson('{ "array": "T" }');
+check('T keeps its mark as the element of an array application', $param->getOf() instanceof Any && $param->getOf()->isParam());
+
+check('array application objects()', parseJson('{ "array": "object.user" }')->objects() === ['user']);
+check('array application of an application objects()', parseJson('{ "array": { "object.page": "object.user" } }')->objects() === ['page', 'user']);
+check('application of an array application objects()', parseJson('{ "object.page": { "array": "object.user" } }')->objects() === ['page', 'user']);
+check('nested array application objects()', parseJson('{ "array": { "array": "object.user" } }')->objects() === ['user']);
+
+$strings = parseJson('{ "array": "string" }');
+check('array application accepts matching items', $strings->isValid(['a', 'b']) && $strings->isValid([]));
+check('array application rejects other items and non-arrays', !$strings->isValid([1]) && !$strings->isValid('a') && !$strings->isValid(null));
+$mixed = parseJson('{ "array": ["string", "number"] }');
+check('array application element union applies to every item', $mixed->isValid(['a', 1]) && !$mixed->isValid([true]));
+$nested = parseJson('{ "array": { "array": "number" } }');
+check('nested array applications validate each level', $nested->isValid([[1], []]) && !$nested->isValid([['a']]));
+
+$malformed = [
+    ['{ "array": "string", "object.a": "string" }', Type::MALFORMED_KEY_COUNT],
+    ['{ "array": 5 }', Type::MALFORMED_ARGUMENT],
+    ['{ "array": true }', Type::MALFORMED_ARGUMENT],
+    ['{ "arrays": "string" }', Type::MALFORMED_KEY_PREFIX],
+    ['{ "array.x": "string" }', Type::MALFORMED_KEY_PREFIX],
+    ['{ "Array": "string" }', Type::MALFORMED_KEY_PREFIX],
+];
+
+foreach ($malformed as $case) {
+    $m = parseJson($case[0]);
+    check(
+        "malformed {$case[0]} is any with reason {$case[1]}",
+        $m instanceof Any && $m->getMalformed() === $case[1] && $m->isValid('anything')
+    );
+}
+
+// ---- A union of one entry is that entry -------------------------------------------
+// The parser already collapses it; these pin it, and the legacy array shorthand.
+
+check('["string"] is string', parseJson('["string"]') instanceof \WebFunction\Type\Base && parseJson('["string"]')->getBaseType() === 'string');
+check('["string.email"] compact is email', parseJson('["string.email"]')->format('compact') === 'email');
+check('["T"] is T', parseJson('["T"]') instanceof Any && parseJson('["T"]')->isParam());
+check('one-entry union of an array application is that array', parseJson('[{ "array": "string" }]') instanceof \WebFunction\Type\ArrayOf);
+check('one-entry union of an application is that application', parseJson('[{ "object.list": "object.user" }]')->getRefinement() === 'list');
+check('[["string"]] is still an array, not a one-entry union', parseJson('[["string"]]') instanceof \WebFunction\Type\ArrayOf);
+check('two entries stay a union', parseJson('["string", "null"]') instanceof \WebFunction\Type\Union);
+
+// ---- A package that uses array applications loads -----------------------------------
+
+$arrayPackage = Package::fromArray(json_decode(<<<'JSON'
+{
+  "base_url": "https://api.example.com/",
+  "endpoints": [
+    { "name": "get-comments", "returns": { "array": "object.comment" }, "arguments": [] }
+  ],
+  "objects": [
+    { "name": "comment", "attributes": [
+      { "name": "id", "type": "string.uuid" },
+      { "name": "message", "type": "string" },
+      { "name": "replies", "type": { "array": "object.comment" } }
+    ] }
+  ]
+}
+JSON, true));
+
+check('package: array application return', (string) $arrayPackage->endpoint('get-comments')->getReturns() === 'array<object.comment>');
+check('package: array application attribute', (string) $arrayPackage->object('comment', 'attributes')->getAttribute('replies')->getType() === 'array<object.comment>');
+
 echo "\nAll generics tests passed.\n";
