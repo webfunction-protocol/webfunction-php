@@ -33,7 +33,7 @@ final class Type
     /** Reason recorded by {@see Any::getMalformed()}: a generic application object did not have exactly one key. */
     const MALFORMED_KEY_COUNT = 'key-count';
 
-    /** Reason recorded by {@see Any::getMalformed()}: the application's key was not `object.<name>`. */
+    /** Reason recorded by {@see Any::getMalformed()}: the application's key was neither `object.<name>` nor `array`. */
     const MALFORMED_KEY_PREFIX = 'key-prefix';
 
     /** Reason recorded by {@see Any::getMalformed()}: the application's value was not a valid type. */
@@ -44,10 +44,11 @@ final class Type
     }
 
     /**
-     * Parses a raw type declaration (a string, an array of strings/arrays, a generic application, or `null`)
-     * into a {@see TypeInterface}. A top-level array is read as a union; a nested array denotes an array of
-     * the inner type. A generic application, `{"object.list": "object.user"}` (an associative array once
-     * decoded), is a generic object applied to a type. An empty or unrecognized declaration resolves to
+     * Parses a raw type declaration (a string, an array of strings/arrays, an application, or `null`)
+     * into a {@see TypeInterface}. A top-level array is read as a union (a union of one entry is that entry);
+     * a nested array denotes an array of the inner type. A generic application, `{"object.list": "object.user"}`
+     * (an associative array once decoded), is a generic object applied to a type, and `{"array": "string"}`
+     * is an array of that type, the same as `[["string"]]`. An empty or unrecognized declaration resolves to
      * {@see Any}, as does the bare type parameter `T` and any malformed application.
      *
      * @param mixed $raw
@@ -155,7 +156,8 @@ final class Type
     }
 
     /**
-     * Parses a generic application, `{"object.<name>": <type>}`. Anything that is not exactly that shape
+     * Parses a type application: a generic object applied to a type, `{"object.<name>": <type>}`, or an array of
+     * a type, `{"array": <type>}` (the same as `[[<type>]]`). Anything that is not exactly one of those shapes
      * resolves to {@see Any} carrying the reason, rather than failing, so a package using generics (even
      * incorrectly) still loads.
      *
@@ -168,6 +170,16 @@ final class Type
         }
 
         $key = array_key_first($raw);
+
+        if ($key === 'array') {
+            $element = $raw[$key];
+
+            if (is_int($element) || is_float($element) || is_bool($element)) {
+                return new Any(false, self::MALFORMED_ARGUMENT);
+            }
+
+            return self::array(self::parse($element));
+        }
 
         if (!is_string($key) || strncmp($key, 'object.', 7) !== 0 || $key === 'object.') {
             return new Any(false, self::MALFORMED_KEY_PREFIX);
